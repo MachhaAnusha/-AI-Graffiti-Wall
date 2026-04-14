@@ -1,0 +1,16 @@
+{
+  "name": "ai-graffiti-wall",
+  "version": "1.0.0",
+  "description": "AI Graffiti Wall - Interactive digital art application",
+  "scripts": {
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "dev": "cd server && npm run dev"
+  },
+  "keywords": ["graffiti", "ai", "wall", "canvas", "socket.io", "react"],
+  "author": "MachhaAnusha",
+  "license": "MIT",
+  "engines": {
+    "node": "18.x"
+  }
+}

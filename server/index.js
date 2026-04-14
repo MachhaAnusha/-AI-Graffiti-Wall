@@ -169,9 +169,18 @@ io.on('connection', (socket) => {
   });
 });
 
+// Serve static files from client build
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// Serve React app for all non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`AI Graffiti Wall server running on port ${PORT}`);
+  console.log(`Application: http://localhost:${PORT}`);
   console.log(`API Status: http://localhost:${PORT}/api/status`);
   console.log(`Gallery API: http://localhost:${PORT}/api/gallery`);
 });
