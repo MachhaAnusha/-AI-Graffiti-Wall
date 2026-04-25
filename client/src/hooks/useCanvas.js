@@ -6,6 +6,9 @@ export const useCanvas = () => {
   const canvas = useRef(null);
   const brushHistory = useRef([]);
   const sprayParticles = useRef([]);
+  const currentBrushType = useRef('freehand');
+  const isDrawing = useRef(false);
+  const chalkDots = useRef([]);
 
   useEffect(() => {
     // Initialize Fabric.js canvas
@@ -23,8 +26,11 @@ export const useCanvas = () => {
       });
 
       // Set default brush
+      canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
       canvas.current.freeDrawingBrush.width = 5;
       canvas.current.freeDrawingBrush.color = '#FFE500';
+      canvas.current.freeDrawingBrush.strokeLineCap = 'round';
+      canvas.current.freeDrawingBrush.strokeLineJoin = 'round';
 
       // Prevent canvas from being too large on mobile
       const resizeCanvas = () => {
@@ -295,53 +301,83 @@ export const useCanvas = () => {
           ctx.lineDashOffset = Math.random() * 10;
           
           ctx.beginPath();
-          ctx.moveTo(points[0].x, points[0].y);
-          
-          for (let i = 1; i < points.length; i++) {
-            ctx.lineTo(points[i].x, points[i].y);
-          }
-          
-          ctx.stroke();
-          ctx.restore();
-        };
         break;
-
+        
       case 'drip':
         canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
         canvas.current.freeDrawingBrush.width = size;
         canvas.current.freeDrawingBrush.color = color;
-        canvas.current.freeDrawingBrush.opacity = opacity;
+        canvas.current.freeDrawingBrush.strokeLineCap = 'round';
+        canvas.current.freeDrawingBrush.strokeLineJoin = 'round';
+        break;
         
-        // Drip effect handled in the main component
-        break;
-
       case 'eraser':
+        // Use PencilBrush with background color if EraserBrush not available
         canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.color = '#0a0a0a'; // match background
         canvas.current.freeDrawingBrush.width = size * 2;
-        canvas.current.freeDrawingBrush.color = '#FFFFFF';
-        canvas.current.freeDrawingBrush.opacity = 1;
-        canvas.current.freeDrawingBrush.globalCompositeOperation = 'destination-out';
         break;
-
-      default:
-        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
-        canvas.current.freeDrawingBrush.width = size;
-        canvas.current.freeDrawingBrush.color = color;
     }
-
-    // Apply neon glow effect
-    if (neonGlow && canvas.current.freeDrawingBrush) {
+    
+    if (neonGlow && canvas.current.freeDrawingBrush.shadow) {
       canvas.current.freeDrawingBrush.shadow = new fabric.Shadow({
         color: color,
-        blur: 20,
+        blur: 15,
         offsetX: 0,
         offsetY: 0
       });
-    } else if (canvas.current.freeDrawingBrush) {
+    } else if (canvas.current.freeDrawingBrush.shadow) {
       canvas.current.freeDrawingBrush.shadow = null;
     }
-
+    
     canvas.current.renderAll();
+  };
+  
+  // Custom chalk implementation
+  const addChalkDot = (x, y, color, size) => {
+    if (!canvas.current) return;
+    
+    const dot = new fabric.Circle({
+      left: x,
+      top: y,
+      radius: Math.random() * 3 + 1,
+      fill: color,
+      opacity: Math.random() * 0.3 + 0.2,
+      selectable: false,
+      evented: false
+    });
+    
+    canvas.current.add(dot);
+    chalkDots.current.push(dot);
+    
+    // Remove old dots to keep canvas clean
+    if (chalkDots.current.length > 50) {
+      const oldDot = chalkDots.current.shift();
+      if (oldDot && canvas.current) {
+        canvas.current.remove(oldDot);
+      }
+    }
+  };
+  
+  // Drip effect for drip brush
+  const addDripEffect = (path) => {
+    if (!canvas.current || !path) return;
+    
+    const points = path.path || [];
+    if (points.length < 2) return;
+    
+    // Get the last point (bottom-most)
+    const lastPoint = points[points.length - 2];
+    const currentPoint = points[points.length - 1];
+      
+      if (triangle.opacity <= 0 || top > currentPoint.y + 100) {
+        if (triangle && canvas.current) {
+          canvas.current.remove(triangle);
+        }
+      } else {
+        requestAnimationFrame(animateDrip);
+      }
+    }
   };
 
   return {

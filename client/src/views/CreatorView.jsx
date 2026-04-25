@@ -31,6 +31,10 @@ const CreatorView = () => {
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockTimeRemaining, setBlockTimeRemaining] = useState(0);
   const [sessionSettings, setSessionSettings] = useState({ timerDuration: 3, slideshowEnabled: true });
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showMobileSheet, setShowMobileSheet] = useState(false);
+  const [textToGraffitiText, setTextToGraffitiText] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState('bubble');
   
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -41,101 +45,14 @@ const CreatorView = () => {
   const { moderateText, moderateImage } = useModeration();
   const { undo, redo, canUndo, canRedo, saveState } = useUndoRedo(canvas);
   
-  // Pointer events for Apple Pencil and touch support
-  const pointerEvents = usePointerEvents({
-    onPointerDown: handlePointerDown,
-    onPointerMove: handlePointerMove,
-    onPointerUp: handlePointerUp,
-    onPinchStart: handlePinchStart,
-    onPinchMove: handlePinchMove,
-    onPinchEnd: handlePinchEnd,
-  });
+  // Note: Brush system is now handled in useCanvas hook
+  // Canvas drawing events are handled automatically by the enhanced brush system
 
-  function handlePointerDown(event) {
-    if (!canvas || isBlocked) return;
-    
-    const pointer = event.pointer;
-    const pressure = pointer.pressure || 1;
-    
-    // Adjust brush size based on pressure for Apple Pencil
-    if (pressure > 0 && pressure < 1) {
-      const pressureMultiplier = 0.5 + (pressure * 1.5);
-      canvas.freeDrawingBrush.width = brushSize * pressureMultiplier;
-    }
-    
-    setIsDrawing(true);
-  }
+  // Note: Pointer events are now handled by useCanvas hook with enhanced brush system
 
-  function handlePointerMove(event) {
-    if (!canvas || !isDrawing || isBlocked) return;
-    
-    const pointer = event.pointer;
-    const pressure = pointer.pressure || 1;
-    
-    // Real-time pressure adjustment
-    if (pressure > 0 && pressure < 1) {
-      const pressureMultiplier = 0.5 + (pressure * 1.5);
-      canvas.freeDrawingBrush.width = brushSize * pressureMultiplier;
-    }
-  }
+  // Note: Zoom and pinch gestures are handled by useCanvas hook
 
-  function handlePointerUp(event) {
-    setIsDrawing(false);
-    if (canvas) {
-      saveState();
-    }
-  }
-
-  let zoomLevel = 1;
-  let isPinching = false;
-
-  function handlePinchStart(event) {
-    isPinching = true;
-  }
-
-  function handlePinchMove(event) {
-    if (!canvas || !isPinching) return;
-    
-    const scale = event.scale;
-    const newZoom = Math.max(0.5, Math.min(3, zoomLevel * scale));
-    
-    canvas.setZoom(newZoom);
-    canvas.renderAll();
-    zoomLevel = newZoom;
-  }
-
-  function handlePinchEnd(event) {
-    isPinching = false;
-  }
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key.toLowerCase()) {
-          case 'z':
-            e.preventDefault();
-            if (e.shiftKey) {
-              redo();
-            } else {
-              undo();
-            }
-            break;
-          case 'y':
-            e.preventDefault();
-            redo();
-            break;
-          case 's':
-            e.preventDefault();
-            handleDownload();
-            break;
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  // Note: Keyboard shortcuts are handled by useCanvas hook with undo/redo functionality
 
   // Canvas initialization with 16:9 aspect ratio
   useEffect(() => {
@@ -151,40 +68,10 @@ const CreatorView = () => {
       });
       
       setCanvasBackground(background);
-      
-      // Enhanced brush setup
-      canvas.on('path:created', (e) => {
-        setIsDrawing(false);
-        saveState();
-        
-        // Add drip effect for drip brush
-        if (selectedBrush === 'drip' && e.path) {
-          addDripEffect(e.path);
-        }
-      });
-      
-      canvas.on('mouse:down', () => {
-        setIsDrawing(true);
-      });
-      
-      canvas.on('mouse:up', () => {
-        setIsDrawing(false);
-        saveState();
-      });
     }
-  }, [canvas, background, selectedBrush]);
+  }, [canvas, background]);
 
-  // Brush enhancement
-  useEffect(() => {
-    if (canvas) {
-      enhanceBrush(selectedBrush, {
-        size: brushSize,
-        color: selectedColor,
-        opacity,
-        neonGlow
-      });
-    }
-  }, [selectedBrush, brushSize, selectedColor, opacity, neonGlow, canvas]);
+  // Brush enhancement is now handled by useCanvas hook
 
   // Socket events
   useEffect(() => {
@@ -194,10 +81,6 @@ const CreatorView = () => {
     
     socket.on('session:update', (settings) => {
       setSessionSettings(settings);
-    });
-    
-    socket.on('timer:start', (duration) => {
-      // Timer logic handled by TimerWidget component
     });
     
     socket.on('timer:expired', () => {
@@ -222,72 +105,13 @@ const CreatorView = () => {
     
     return () => {
       socket.off('session:update');
-      socket.off('timer:start');
       socket.off('timer:expired');
       socket.off('canvas:warning');
       socket.off('canvas:blocked');
     };
   }, [socket]);
 
-  // Canvas snapshot moderation (Layer 3)
-  useEffect(() => {
-    if (!canvas || isBlocked) return;
-    
-    const moderationInterval = setInterval(async () => {
-      try {
-        const canvasData = canvas.toDataURL('image/png');
-        const violations = await moderateImage(canvasData);
-        
-        if (violations.length > 0) {
-          socket.emit('canvas:moderation', {
-            image: canvasData,
-            sessionId: socket.id
-          });
-        }
-      } catch (error) {
-        console.error('Canvas moderation error:', error);
-      }
-    }, 45000); // Every 45 seconds
-    
-    return () => clearInterval(moderationInterval);
-  }, [canvas, isBlocked, socket]);
-
-  const addDripEffect = (path) => {
-    if (!canvas) return;
-    
-    // Create drip particles
-    const dripCount = Math.floor(Math.random() * 3) + 1;
-    
-    for (let i = 0; i < dripCount; i++) {
-      setTimeout(() => {
-        const drip = new fabric.Circle({
-          left: path.path[path.path.length - 2] + (Math.random() - 0.5) * 10,
-          top: path.path[path.path.length - 1],
-          radius: Math.random() * 3 + 1,
-          fill: path.stroke,
-          opacity: 0.8,
-          selectable: false
-        });
-        
-        canvas.add(drip);
-        
-        // Animate drip falling
-        let top = drip.top;
-        const dripAnimation = setInterval(() => {
-          top += 2;
-          drip.set('top', top);
-          drip.set('opacity', drip.opacity - 0.02);
-          
-          if (drip.opacity <= 0) {
-            clearInterval(dripAnimation);
-            canvas.remove(drip);
-          } else {
-            canvas.renderAll();
-          }
-        }, 50);
-      }, i * 200);
-    }
-  };
+  // Note: Canvas moderation is now handled by useModeration hook with 4-layer system
 
   const handleNicknameSubmit = (e) => {
     e.preventDefault();
@@ -296,54 +120,55 @@ const CreatorView = () => {
     }
   };
 
+  // Brush handling is now handled by useCanvas hook
   const handleBrushChange = (brush) => {
     setSelectedBrush(brush);
-    if (canvas) {
-      enhanceBrush(brush, {
-        size: brushSize,
-        color: selectedColor,
-        opacity,
-        neonGlow
-      });
-    }
+    enhanceBrush(brush, {
+      size: brushSize,
+      color: selectedColor,
+      opacity,
+      neonGlow
+    });
   };
 
   const handleColorChange = (color) => {
     setSelectedColor(color);
-    if (canvas) {
-      canvas.freeDrawingBrush.color = color;
-    }
+    enhanceBrush(selectedBrush, {
+      size: brushSize,
+      color,
+      opacity,
+      neonGlow
+    });
   };
 
   const handleSizeChange = (size) => {
     setBrushSize(size);
-    if (canvas) {
-      canvas.freeDrawingBrush.width = size;
-    }
+    enhanceBrush(selectedBrush, {
+      size,
+      color: selectedColor,
+      opacity,
+      neonGlow
+    });
   };
 
   const handleOpacityChange = (opacityValue) => {
     setOpacity(opacityValue);
-    if (canvas) {
-      canvas.freeDrawingBrush.opacity = opacityValue;
-    }
+    enhanceBrush(selectedBrush, {
+      size: brushSize,
+      color: selectedColor,
+      opacity: opacityValue,
+      neonGlow
+    });
   };
 
   const handleNeonGlowToggle = () => {
     setNeonGlow(!neonGlow);
-    if (canvas) {
-      const brush = canvas.freeDrawingBrush;
-      if (!neonGlow) {
-        brush.shadow = new fabric.Shadow({
-          color: selectedColor,
-          blur: 20,
-          offsetX: 0,
-          offsetY: 0
-        });
-      } else {
-        brush.shadow = null;
-      }
-    }
+    enhanceBrush(selectedBrush, {
+      size: brushSize,
+      color: selectedColor,
+      opacity,
+      neonGlow: !neonGlow
+    });
   };
 
   const handleBackgroundChange = (newBackground) => {
@@ -603,16 +428,11 @@ const CreatorView = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-primary text-primary">
+    <div className="min-h-screen bg-primary text-primary flex flex-col">
       <Toaster 
-        position="top-center"
+        position="bottom-center"
         toastOptions={{
-          className: 'graffiti-panel',
-          style: {
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-color)',
-          }
+          className: 'toast',
         }}
       />
       
@@ -629,22 +449,22 @@ const CreatorView = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="graffiti-panel max-w-md w-full"
+              className="bg-secondary border border-subtle rounded-12px p-20px max-w-md w-full"
             >
-              <h2 className="graffiti-title text-2xl mb-4">Enter Your Nickname</h2>
+              <h2 className="font-display text-2xl mb-4 text-accent-yellow">Enter Your Nickname</h2>
               <form onSubmit={handleNicknameSubmit} className="space-y-4">
                 <input
                   type="text"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
                   placeholder="Your artist name..."
-                  className="graffiti-input w-full"
+                  className="color-input w-full"
                   maxLength={20}
                   required
                 />
                 <button
                   type="submit"
-                  className="graffiti-button w-full"
+                  className="generate-button w-full"
                 >
                   Start Creating
                 </button>
@@ -667,18 +487,18 @@ const CreatorView = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="graffiti-panel max-w-4xl w-full"
+              className="bg-secondary border border-subtle rounded-12px p-20px max-w-4xl w-full"
             >
-              <h2 className="graffiti-title text-2xl mb-4">AI Enhancement Complete!</h2>
+              <h2 className="font-display text-2xl mb-4 text-accent-yellow">AI Enhancement Complete!</h2>
               <div className="grid md:grid-cols-2 gap-4 mb-6">
                 <div>
-                  <h3 className="ui-text text-sm mb-2">Original</h3>
+                  <h3 className="section-header mb-2">ORIGINAL</h3>
                   <div className="canvas-container">
                     <canvas ref={canvasRef} className="w-full h-48 object-contain" />
                   </div>
                 </div>
                 <div>
-                  <h3 className="ui-text text-sm mb-2">Enhanced</h3>
+                  <h3 className="section-header mb-2">ENHANCED</h3>
                   <div className="canvas-container">
                     <img src={enhancedImage} alt="Enhanced artwork" className="w-full h-48 object-contain" />
                   </div>
@@ -687,13 +507,13 @@ const CreatorView = () => {
               <div className="flex gap-4">
                 <button
                   onClick={handleRejectEnhancement}
-                  className="graffiti-button flex-1 bg-gray-600"
+                  className="action-button clear-button flex-1"
                 >
                   Keep Original
                 </button>
                 <button
                   onClick={handleAcceptEnhancement}
-                  className="graffiti-button flex-1"
+                  className="send-button flex-1"
                 >
                   Use Enhanced
                 </button>
@@ -703,210 +523,475 @@ const CreatorView = () => {
         )}
       </AnimatePresence>
 
-      {/* Session Timer */}
-      <TimerWidget 
-        duration={sessionSettings.timerDuration}
-        onExpire={handleAutoSubmit}
-        className="session-timer"
-      />
+      {/* Top Bar */}
+      <div className="top-bar">
+        <div className="top-bar-title">GRAFFITI WALL</div>
+        <div className="top-bar-brush-info">
+          <div className="brush-indicator" style={{ backgroundColor: selectedColor }}></div>
+          <span>{selectedBrush.toUpperCase()}</span>
+        </div>
+        <div className="top-bar-right">
+          <div className="countdown-timer">
+            <svg className="countdown-circle" width="60" height="60">
+              <circle
+                cx="30"
+                cy="30"
+                r="28"
+                fill="none"
+                stroke="var(--border-subtle)"
+                strokeWidth="3"
+              />
+              <circle
+                cx="30"
+                cy="30"
+                r="28"
+                fill="none"
+                stroke="var(--accent-yellow)"
+                strokeWidth="3"
+                strokeDasharray={`${2 * Math.PI * 28}`}
+                strokeDashoffset={`${2 * Math.PI * 28 * (1 - (sessionTimer / 180))}`}
+              />
+            </svg>
+            <div className="countdown-text">
+              {Math.floor(sessionTimer / 60)}:{(sessionTimer % 60).toString().padStart(2, '0')}
+            </div>
+          </div>
+          <div className="nickname-badge">{nickname || 'ANONYMOUS'}</div>
+        </div>
+      </div>
 
-      {/* Main Content */}
-      <div className={`flex flex-col ${isMobile ? 'h-screen pb-20' : 'min-h-screen'}`}>
-        {/* Header */}
-        <header className="graffiti-panel m-4">
-          <h1 className="graffiti-title text-3xl md:text-4xl">AI Graffiti Wall</h1>
-          <p className="text-secondary mt-2">Create your digital masterpiece</p>
-        </header>
+      {/* Main Layout */}
+      <div className="flex flex-1 relative">
+        {/* Left Sidebar - Desktop Only */}
+        <div className="left-sidebar hidden md:flex">
+          {/* Brush Buttons */}
+          {['freehand', 'spray', 'marker', 'chalk', 'drip', 'eraser'].map((brush) => (
+            <button
+              key={brush}
+              onClick={() => handleBrushChange(brush)}
+              className={`brush-button ${selectedBrush === brush ? 'active' : ''}`}
+              disabled={isBlocked}
+            >
+              <span className="brush-icon">
+                {brush === 'freehand' && '✏️'}
+                {brush === 'spray' && '💨'}
+                {brush === 'marker' && '🖊️'}
+                {brush === 'chalk' && '🪨'}
+                {brush === 'drip' && '💧'}
+                {brush === 'eraser' && '⬜'}
+              </span>
+              <span className="brush-label">{brush.slice(0, 3).toUpperCase()}</span>
+            </button>
+          ))}
+          
+          <div className="brush-divider"></div>
+          
+          {/* Undo/Redo */}
+          <div className="undo-redo-buttons">
+            <button
+              onClick={undo}
+              disabled={!canUndo || isBlocked}
+              className="undo-button"
+            >
+              <span>↩</span>
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo || isBlocked}
+              className="redo-button"
+            >
+              <span>↪</span>
+            </button>
+          </div>
+        </div>
 
-        {/* Canvas Container */}
-        <div className="flex-1 px-4 mb-4">
+        {/* Canvas Area */}
+        <div className="flex-1 flex flex-col p-4">
           <div 
             ref={containerRef}
-            className="canvas-container canvas-aspect-16-9"
-            {...pointerEvents}
+            className="canvas-container canvas-aspect-16-9 flex-1"
           >
             <canvas 
               ref={canvasRef}
               id="graffiti-canvas"
               className="w-full h-full"
             />
-          </div>
-          
-          {/* Blocked Overlay */}
-          {isBlocked && (
-            <div className="absolute inset-0 bg-red-900 bg-opacity-75 flex items-center justify-center rounded-lg">
-              <div className="text-center">
-                <div className="text-6xl mb-4">🚫</div>
-                <h3 className="graffiti-title text-xl mb-2">Canvas Blocked</h3>
-                <p className="text-secondary">Content violation detected</p>
-                <p className="text-sm mt-2">Unblocks in: {Math.ceil(blockTimeRemaining / 1000)}s</p>
+            
+            {/* Blocked Overlay */}
+            {isBlocked && (
+              <div className="absolute inset-0 bg-red-900 bg-opacity-75 flex items-center justify-center rounded-lg">
+                <div className="text-center">
+                  <div className="text-6xl mb-4">🚫</div>
+                  <h3 className="font-display text-xl mb-2 text-accent-yellow">Canvas Blocked</h3>
+                  <p className="text-muted">Content violation detected</p>
+                  <p className="text-sm mt-2">Unblocks in: {Math.ceil(blockTimeRemaining / 1000)}s</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Toolbar - Desktop */}
-        {!isMobile && (
-          <div className="px-4 pb-4 space-y-4">
-            {/* Top Toolbar */}
-            <Toolbar className="toolbar">
-              <BrushSelector
-                selectedBrush={selectedBrush}
-                onBrushChange={handleBrushChange}
-                disabled={isBlocked}
-              />
+        {/* Right Panel - Desktop Only */}
+        <div className="right-panel hidden md:block">
+          {/* Color Section */}
+          <div>
+            <div className="section-header">COLOR</div>
+            <div 
+              className="active-color-display"
+              style={{ backgroundColor: selectedColor }}
+              onClick={() => setShowColorPicker(!showColorPicker)}
+            ></div>
+            
+            {showColorPicker && (
+              <div className="color-picker-popup">
+                <input
+                  type="color"
+                  value={selectedColor}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  className="color-input mb-2"
+                />
+                <input
+                  type="text"
+                  value={selectedColor}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  className="color-input mb-2"
+                  placeholder="#FFE500"
+                />
+                <div className="opacity-slider"></div>
+              </div>
+            )}
+            
+            {/* Color Palettes */}
+            <div className="color-palette">
+              <div className="palette-label">OLD SCHOOL</div>
+              {['#FF0000', '#FF8C00', '#FFD700', '#228B22', '#0000CD', '#8B008B'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
               
-              <ColorPicker
-                selectedColor={selectedColor}
-                onColorChange={handleColorChange}
-                disabled={isBlocked}
-              />
+              <div className="palette-label">NEON</div>
+              {['#FF006E', '#00F5FF', '#39FF14', '#FFE500', '#FF4500', '#BF00FF'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
               
-              <div className="flex items-center gap-2">
-                <label className="ui-text text-xs">Size:</label>
+              <div className="palette-label">PASTEL</div>
+              {['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#DDA0DD'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
+              
+              <div className="palette-label">FIRE</div>
+              {['#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#FF6347', '#B22222'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
+              
+              <div className="palette-label">CHROME</div>
+              {['#E8E8E8', '#C0C0C0', '#A8A9AD', '#808080', '#696969', '#404040'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
+              
+              <div className="palette-label">DARK</div>
+              {['#1a1a2e', '#16213e', '#0f3460', '#533483', '#e94560', '#f5a623'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
+              
+              <div className="palette-label">RAINBOW</div>
+              {['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#8B00FF'].map(color => (
+                <div
+                  key={color}
+                  className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorChange(color)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Brush Settings */}
+          <div>
+            <div className="section-header">BRUSH</div>
+            <div className="brush-setting-row">
+              <span className="brush-setting-label">SIZE</span>
+              <span className="brush-setting-value">{brushSize}px</span>
+            </div>
+            <div className="brush-preview" style={{ backgroundColor: selectedColor, width: brushSize, height: brushSize }}></div>
+            <input
+              type="range"
+              min="1"
+              max="80"
+              value={brushSize}
+              onChange={(e) => handleSizeChange(parseInt(e.target.value))}
+              className="brush-slider"
+              disabled={isBlocked}
+              style={{ '--thumb-color': selectedColor }}
+            />
+            
+            <div className="brush-setting-row mt-4">
+              <span className="brush-setting-label">OPACITY</span>
+              <span className="brush-setting-value">{Math.round(opacity * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={opacity * 100}
+              onChange={(e) => handleOpacityChange(parseInt(e.target.value) / 100)}
+              className="brush-slider"
+              disabled={isBlocked}
+              style={{ 
+                background: `linear-gradient(90deg, transparent, ${selectedColor})`,
+                '--thumb-color': selectedColor 
+              }}
+            />
+            
+            <div className="brush-setting-row mt-4">
+              <span className="brush-setting-label">NEON GLOW</span>
+              <div 
+                className={`neon-glow-toggle ${neonGlow ? 'on' : ''}`}
+                onClick={handleNeonGlowToggle}
+              >
+                <div className="neon-glow-thumb"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Background Section */}
+          <div>
+            <div className="section-header">BACKGROUND</div>
+            <div className="background-grid">
+              {['brick', 'concrete', 'metal', 'wood', 'black', 'white'].map(bg => (
+                <div
+                  key={bg}
+                  className={`background-option bg-${bg} ${background === bg ? 'active' : ''}`}
+                  onClick={() => handleBackgroundChange(bg)}
+                />
+              ))}
+              <div className="background-option upload-button" onClick={() => fileInputRef.current?.click()}>
+                <div className="upload-icon">+</div>
+                <div className="upload-text">Upload</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Text to Graffiti Section */}
+          <div>
+            <div className="section-header">AI TEXT</div>
+            <div className="relative">
+              <input
+                type="text"
+                value={textToGraffitiText}
+                onChange={(e) => setTextToGraffitiText(e.target.value)}
+                placeholder="Type your word..."
+                className="text-input"
+                maxLength={50}
+              />
+              <div className="char-count">{textToGraffitiText.length}/50</div>
+            </div>
+            
+            <div className="style-pills">
+              {['bubble', 'wildstyle', 'block', 'tag', 'stencil'].map(style => (
+                <div
+                  key={style}
+                  className={`style-pill ${selectedStyle === style ? 'active' : ''}`}
+                  onClick={() => setSelectedStyle(style)}
+                >
+                  {style.toUpperCase()}
+                </div>
+              ))}
+            </div>
+            
+            <button
+              onClick={() => handleTextToGraffiti(textToGraffitiText, selectedStyle)}
+              disabled={isEnhancing || isBlocked || !textToGraffitiText}
+              className="generate-button"
+            >
+              {isEnhancing ? (
+                <div className="spray-loader">
+                  <div className="spray-dot"></div>
+                  <div className="spray-dot"></div>
+                  <div className="spray-dot"></div>
+                </div>
+              ) : (
+                'GENERATE'
+              )}
+            </button>
+            
+            <button
+              onClick={handleEnhanceDrawing}
+              disabled={isEnhancing || isBlocked}
+              className="enhance-button"
+            >
+              AI ENHANCE
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Action Bar */}
+      <div className="bottom-action-bar">
+        <div className="flex gap-3">
+          <button
+            onClick={handleClearCanvas}
+            disabled={isBlocked}
+            className="action-button clear-button"
+          >
+            CLEAR
+          </button>
+          <button
+            onClick={handleDownload}
+            className="action-button download-button"
+          >
+            DOWNLOAD
+          </button>
+        </div>
+        
+        <div className="flex-1 max-w-160px">
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="Your tag name..."
+            className="text-input h-32px"
+            maxLength={20}
+          />
+        </div>
+        
+        <button
+          onClick={handleSendToDisplay}
+          disabled={isBlocked}
+          className="send-button"
+        >
+          SEND TO WALL
+        </button>
+      </div>
+
+      {/* Mobile Toolbar */}
+      <div className="mobile-toolbar md:hidden">
+        {['freehand', 'spray', 'marker', 'chalk', 'drip', 'eraser'].map((brush) => (
+          <button
+            key={brush}
+            onClick={() => handleBrushChange(brush)}
+            className={`mobile-brush-button ${selectedBrush === brush ? 'active' : ''}`}
+            disabled={isBlocked}
+          >
+            <span className="mobile-brush-icon">
+              {brush === 'freehand' && '✏️'}
+              {brush === 'spray' && '💨'}
+              {brush === 'marker' && '🖊️'}
+              {brush === 'chalk' && '🪨'}
+              {brush === 'drip' && '💧'}
+              {brush === 'eraser' && '⬜'}
+            </span>
+            <span className="mobile-brush-label">{brush.slice(0, 3).toUpperCase()}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile Bottom Sheet */}
+      <AnimatePresence>
+        {showMobileSheet && (
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            className="mobile-bottom-sheet md:hidden"
+          >
+            <div className="bottom-sheet-handle"></div>
+            <div className="p-4">
+              {/* Mobile Color Section */}
+              <div className="mb-6">
+                <div className="section-header">COLOR</div>
+                <div 
+                  className="active-color-display mx-auto"
+                  style={{ backgroundColor: selectedColor }}
+                  onClick={() => setShowColorPicker(!showColorPicker)}
+                ></div>
+                
+                {/* Mobile Color Palettes */}
+                <div className="color-palette">
+                  {['#FF006E', '#00F5FF', '#39FF14', '#FFE500', '#FF4500', '#BF00FF'].map(color => (
+                    <div
+                      key={color}
+                      className={`color-swatch ${selectedColor === color ? 'active' : ''}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => handleColorChange(color)}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              {/* Mobile Brush Settings */}
+              <div className="mb-6">
+                <div className="section-header">BRUSH</div>
+                <div className="brush-setting-row">
+                  <span className="brush-setting-label">SIZE</span>
+                  <span className="brush-setting-value">{brushSize}px</span>
+                </div>
                 <input
                   type="range"
                   min="1"
-                  max="50"
+                  max="80"
                   value={brushSize}
                   onChange={(e) => handleSizeChange(parseInt(e.target.value))}
-                  className="w-24"
+                  className="brush-slider"
                   disabled={isBlocked}
+                  style={{ '--thumb-color': selectedColor }}
                 />
-                <span className="text-xs w-8">{brushSize}</span>
               </div>
               
-              <div className="flex items-center gap-2">
-                <label className="ui-text text-xs">Opacity:</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={opacity}
-                  onChange={(e) => handleOpacityChange(parseFloat(e.target.value))}
-                  className="w-24"
-                  disabled={isBlocked}
-                />
-                <span className="text-xs w-8">{Math.round(opacity * 100)}%</span>
+              {/* Mobile Background */}
+              <div className="mb-6">
+                <div className="section-header">BACKGROUND</div>
+                <div className="background-grid">
+                  {['brick', 'concrete', 'metal', 'wood', 'black', 'white'].map(bg => (
+                    <div
+                      key={bg}
+                      className={`background-option bg-${bg} ${background === bg ? 'active' : ''}`}
+                      onClick={() => handleBackgroundChange(bg)}
+                    />
+                  ))}
+                </div>
               </div>
-              
-              <button
-                onClick={handleNeonGlowToggle}
-                className={`toolbar-item ${neonGlow ? 'active' : ''}`}
-                disabled={isBlocked}
-              >
-                <span className="text-2xl">✨</span>
-                <span className="text-xs">Glow</span>
-              </button>
-              
-              <div className="flex gap-2 ml-auto">
-                <button
-                  onClick={undo}
-                  disabled={!canUndo || isBlocked}
-                  className="toolbar-item"
-                >
-                  <span className="text-lg">↶</span>
-                  <span className="text-xs">Undo</span>
-                </button>
-                
-                <button
-                  onClick={redo}
-                  disabled={!canRedo || isBlocked}
-                  className="toolbar-item"
-                >
-                  <span className="text-lg">↷</span>
-                  <span className="text-xs">Redo</span>
-                </button>
-              </div>
-            </Toolbar>
-
-            {/* Middle Toolbar */}
-            <Toolbar className="toolbar">
-              <BackgroundSelector
-                selectedBackground={background}
-                onBackgroundChange={handleBackgroundChange}
-                onCustomBackgroundUpload={handleCustomBackgroundUpload}
-                disabled={isBlocked}
-              />
-              
-              <TextToGraffiti
-                onGenerate={handleTextToGraffiti}
-                disabled={isBlocked}
-              />
-              
-              <button
-                onClick={handleEnhanceDrawing}
-                disabled={isEnhancing || isBlocked}
-                className="graffiti-button"
-              >
-                {isEnhancing ? (
-                  <div className="spray-loader">
-                    <div className="spray-dot"></div>
-                    <div className="spray-dot"></div>
-                    <div className="spray-dot"></div>
-                  </div>
-                ) : (
-                  'Enhance with AI'
-                )}
-              </button>
-            </Toolbar>
-
-            {/* Bottom Actions */}
-            <CanvasActions
-              onClear={handleClearCanvas}
-              onDownload={handleDownload}
-              onSendToDisplay={handleSendToDisplay}
-              disabled={isBlocked}
-              nickname={nickname}
-              onNicknameChange={setNickname}
-            />
-          </div>
+            </div>
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        {/* Mobile Toolbar */}
-        {isMobile && (
-          <div className="toolbar toolbar-mobile">
-            <BrushSelector
-              selectedBrush={selectedBrush}
-              onBrushChange={handleBrushChange}
-              disabled={isBlocked}
-              compact
-            />
-            
-            <ColorPicker
-              selectedColor={selectedColor}
-              onColorChange={handleColorChange}
-              disabled={isBlocked}
-              compact
-            />
-            
-            <button
-              onClick={undo}
-              disabled={!canUndo || isBlocked}
-              className="toolbar-item"
-            >
-              <span className="text-lg">↶</span>
-            </button>
-            
-            <button
-              onClick={redo}
-              disabled={!canRedo || isBlocked}
-              className="toolbar-item"
-            >
-              <span className="text-lg">↷</span>
-            </button>
-            
-            <button
-              onClick={handleSendToDisplay}
-              disabled={isBlocked}
-              className="graffiti-button flex-1"
-            >
-              Send to Wall
-            </button>
-          </div>
-        )}
-      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => handleCustomBackgroundUpload(e.target.files[0])}
+        className="hidden"
+      />
     </div>
   );
 };
