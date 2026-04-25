@@ -6,7 +6,7 @@ export const useSocket = () => {
 
   useEffect(() => {
     // Initialize socket connection
-    socketRef.current = io('http://10.5.9.139:3000', {
+    socketRef.current = io('http://localhost:3000', {
       transports: ['websocket', 'polling'],
     });
 

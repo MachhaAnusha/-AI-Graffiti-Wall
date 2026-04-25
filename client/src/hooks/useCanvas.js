@@ -4,6 +4,8 @@ import { fabric } from 'fabric';
 export const useCanvas = () => {
   const canvasRef = useRef(null);
   const canvas = useRef(null);
+  const brushHistory = useRef([]);
+  const sprayParticles = useRef([]);
 
   useEffect(() => {
     // Initialize Fabric.js canvas
@@ -14,11 +16,15 @@ export const useCanvas = () => {
         height: 450,
         backgroundColor: '#000000',
         isDrawingMode: true,
+        preserveObjectStacking: true,
+        renderOnAddRemove: true,
+        imageSmoothingEnabled: true,
+        enableRetinaScaling: true
       });
 
       // Set default brush
       canvas.current.freeDrawingBrush.width = 5;
-      canvas.current.freeDrawingBrush.color = '#ff006e';
+      canvas.current.freeDrawingBrush.color = '#FFE500';
 
       // Prevent canvas from being too large on mobile
       const resizeCanvas = () => {
@@ -55,6 +61,7 @@ export const useCanvas = () => {
       canvas.current.clear();
       canvas.current.backgroundColor = '#000000';
       canvas.current.renderAll();
+      sprayParticles.current = [];
     }
   };
 
@@ -109,7 +116,7 @@ export const useCanvas = () => {
     }
   };
 
-  const addTextToCanvas = (text, style) => {
+  const addTextToCanvas = (text, style, font = 'Rubik Dirt') => {
     // Ensure canvas is initialized
     if (!canvas.current) {
       // Try to initialize canvas if not already done
@@ -122,7 +129,7 @@ export const useCanvas = () => {
           isDrawingMode: true,
         });
         canvas.current.freeDrawingBrush.width = 5;
-        canvas.current.freeDrawingBrush.color = '#ff006e';
+        canvas.current.freeDrawingBrush.color = '#FFE500';
       } else {
         console.error('Canvas element not found');
         return;
@@ -131,24 +138,24 @@ export const useCanvas = () => {
 
     const styles = {
       bubble: {
-        fontFamily: 'Boogaloo, cursive',
+        fontFamily: font || 'Boogaloo, cursive',
         fontSize: 48,
         fontWeight: 'bold',
-        fill: '#ff006e',
-        stroke: '#ffffff',
+        fill: '#FFE500',
+        stroke: '#000000',
         strokeWidth: 2,
-        shadow: 'rgba(255, 0, 110, 0.5) 5px 5px 10px'
+        shadow: 'rgba(255, 229, 0, 0.5) 5px 5px 10px'
       },
       wildstyle: {
-        fontFamily: 'Permanent Marker, cursive',
+        fontFamily: font || 'Permanent Marker, cursive',
         fontSize: 36,
         fontWeight: 'bold',
-        fill: '#3a86ff',
+        fill: '#00F5FF',
         angle: -15,
-        shadow: 'rgba(58, 134, 255, 0.5) 5px 5px 10px'
+        shadow: 'rgba(0, 245, 255, 0.5) 5px 5px 10px'
       },
       block: {
-        fontFamily: 'Rubik Dirt, cursive',
+        fontFamily: font || 'Rubik Dirt, cursive',
         fontSize: 42,
         fontWeight: 'bold',
         fill: '#06ffa5',
@@ -156,14 +163,14 @@ export const useCanvas = () => {
         strokeWidth: 3
       },
       tag: {
-        fontFamily: 'Permanent Marker, cursive',
+        fontFamily: font || 'Permanent Marker, cursive',
         fontSize: 32,
         fontStyle: 'italic',
-        fill: '#ffbe0b',
+        fill: '#FF006E',
         angle: 10
       },
       stencil: {
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: font || 'Arial, sans-serif',
         fontSize: 40,
         fontWeight: 'bold',
         fill: '#8338ec',
@@ -187,11 +194,162 @@ export const useCanvas = () => {
     console.log('Text added to canvas:', text);
   };
 
+  // Enhanced brush system
+  const enhanceBrush = (brushType, options = {}) => {
+    if (!canvas.current) return;
+
+    const { size = 5, color = '#FFE500', opacity = 1, neonGlow = false } = options;
+
+    switch (brushType) {
+      case 'freehand':
+        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size;
+        canvas.current.freeDrawingBrush.color = color;
+        break;
+
+      case 'spray':
+        canvas.current.freeDrawingBrush = new fabric.SprayBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size * 2; // Larger spread
+        canvas.current.freeDrawingBrush.color = color;
+        canvas.current.freeDrawingBrush.density = 40; // More particles
+        canvas.current.freeDrawingBrush.dotWidth = 1;
+        canvas.current.freeDrawingBrush.dotWidthVariance = 2;
+        canvas.current.freeDrawingBrush.randomOpacity = true;
+        
+        // Enhanced spray spreading effect
+        canvas.current.freeDrawingBrush._render = function(ctx) {
+          const points = this.points;
+          if (!points || points.length === 0) return;
+          
+          ctx.save();
+          ctx.fillStyle = this.color;
+          ctx.globalAlpha = this.opacity || opacity;
+          
+          points.forEach(point => {
+            // Create spreading effect
+            const spread = Math.random() * 3;
+            const offsetX = (Math.random() - 0.5) * spread;
+            const offsetY = (Math.random() - 0.5) * spread;
+            
+            ctx.beginPath();
+            ctx.arc(point.x + offsetX, point.y + offsetY, this.dotWidth, 0, 2 * Math.PI);
+            ctx.fill();
+          });
+          
+          ctx.restore();
+        };
+        break;
+
+      case 'marker':
+        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size;
+        canvas.current.freeDrawingBrush.color = color;
+        canvas.current.freeDrawingBrush.opacity = opacity * 0.7; // Transparent marker effect
+        
+        // Marker effect with slight blur
+        canvas.current.freeDrawingBrush._render = function(ctx) {
+          const points = this.points;
+          if (!points || points.length === 0) return;
+          
+          ctx.save();
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = this.width;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = this.opacity;
+          ctx.globalCompositeOperation = 'multiply'; // Marker effect
+          
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          
+          for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+          }
+          
+          ctx.stroke();
+          ctx.restore();
+        };
+        break;
+
+      case 'chalk':
+        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size;
+        canvas.current.freeDrawingBrush.color = color;
+        canvas.current.freeDrawingBrush.opacity = opacity * 0.8;
+        
+        // Chalk texture effect
+        canvas.current.freeDrawingBrush._render = function(ctx) {
+          const points = this.points;
+          if (!points || points.length === 0) return;
+          
+          ctx.save();
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = this.width;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = this.opacity;
+          ctx.globalCompositeOperation = 'multiply';
+          
+          // Add texture
+          ctx.setLineDash([2, 4]);
+          ctx.lineDashOffset = Math.random() * 10;
+          
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          
+          for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+          }
+          
+          ctx.stroke();
+          ctx.restore();
+        };
+        break;
+
+      case 'drip':
+        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size;
+        canvas.current.freeDrawingBrush.color = color;
+        canvas.current.freeDrawingBrush.opacity = opacity;
+        
+        // Drip effect handled in the main component
+        break;
+
+      case 'eraser':
+        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size * 2;
+        canvas.current.freeDrawingBrush.color = '#FFFFFF';
+        canvas.current.freeDrawingBrush.opacity = 1;
+        canvas.current.freeDrawingBrush.globalCompositeOperation = 'destination-out';
+        break;
+
+      default:
+        canvas.current.freeDrawingBrush = new fabric.PencilBrush(canvas.current);
+        canvas.current.freeDrawingBrush.width = size;
+        canvas.current.freeDrawingBrush.color = color;
+    }
+
+    // Apply neon glow effect
+    if (neonGlow && canvas.current.freeDrawingBrush) {
+      canvas.current.freeDrawingBrush.shadow = new fabric.Shadow({
+        color: color,
+        blur: 20,
+        offsetX: 0,
+        offsetY: 0
+      });
+    } else if (canvas.current.freeDrawingBrush) {
+      canvas.current.freeDrawingBrush.shadow = null;
+    }
+
+    canvas.current.renderAll();
+  };
+
   return {
     canvas: canvas.current,
     clearCanvas,
     getCanvasData,
     setCanvasBackground,
-    addTextToCanvas
+    addTextToCanvas,
+    enhanceBrush
   };
 };

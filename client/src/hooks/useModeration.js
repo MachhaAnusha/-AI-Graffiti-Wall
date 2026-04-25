@@ -1,17 +1,9 @@
 import { useState } from 'react';
+import Filter from 'bad-words';
 
-// Simple profanity filter
-const PROFANE_WORDS = [
-  'damn', 'hell', 'shit', 'fuck', 'bitch', 'ass', 'crap', 'piss'
-];
-
-const checkProfanity = (text) => {
-  const lowerText = text.toLowerCase();
-  return PROFANE_WORDS.some(word => lowerText.includes(word));
-};
-
-export const useModeration = () => {
+const useModeration = () => {
   const [moderationLog, setModerationLog] = useState([]);
+  const filter = new Filter();
 
   const addToLog = (entry) => {
     const logEntry = {
@@ -22,59 +14,57 @@ export const useModeration = () => {
     setModerationLog(prev => [logEntry, ...prev].slice(0, 100)); // Keep last 100 entries
   };
 
-  // Text moderation
+  // Text moderation (Layer 1)
   const moderateText = async (text) => {
     try {
-      // First check local profanity filter
-      if (checkProfanity(text)) {
+      // First check with bad-words library
+      if (filter.isProfane(text)) {
         addToLog({
           type: 'text',
           content: text,
           status: 'blocked',
-          reason: 'Local profanity filter'
+          reason: 'Bad words filter',
+          severity: 'high'
         });
         return false;
       }
 
-      // Then check with OpenAI Moderation API (if API key is available)
-      if (import.meta.env.VITE_OPENAI_API_KEY) {
-        try {
-          const response = await fetch('https://api.openai.com/v1/moderations', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
-            },
-            body: JSON.stringify({
-              input: text,
-            }),
-          });
+      // Then check with OpenAI Moderation API (Layer 2)
+      try {
+        const response = await fetch('/api/moderate-text', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text }),
+        });
 
-          if (response.ok) {
-            const result = await response.json();
-            const flagged = result.results[0]?.flagged || false;
-
-            if (flagged) {
-              addToLog({
-                type: 'text',
-                content: text,
-                status: 'blocked',
-                reason: 'OpenAI moderation'
-              });
-              return false;
-            }
+        if (response.ok) {
+          const result = await response.json();
+          
+          if (result.flagged) {
+            addToLog({
+              type: 'text',
+              content: text,
+              status: 'blocked',
+              reason: 'OpenAI moderation',
+              severity: 'high',
+              categories: result.categories || []
+            });
+            return false;
           }
-        } catch (error) {
-          console.error('OpenAI moderation API error:', error);
-          // Continue with local filter result if API fails
         }
+      } catch (error) {
+        console.error('OpenAI moderation API error:', error);
+        // Continue with local filter result if API fails
       }
 
       addToLog({
         type: 'text',
         content: text,
         status: 'approved',
-        reason: 'Passed all checks'
+        reason: 'Passed all checks',
+        severity: 'low'
       });
       return true;
     } catch (error) {
@@ -83,81 +73,55 @@ export const useModeration = () => {
         type: 'text',
         content: text,
         status: 'error',
-        reason: 'Moderation error'
+        reason: 'Moderation error',
+        severity: 'medium'
       });
       return false;
     }
   };
 
-  // Image moderation
+  // Image moderation (Layer 2)
   const moderateImage = async (imageDataUrl) => {
     try {
       // Convert data URL to base64
       const base64Data = imageDataUrl.split(',')[1];
 
-      // Check with Google Vision SafeSearch API (if API key is available)
-      if (import.meta.env.VITE_GOOGLE_VISION_API_KEY) {
-        try {
-          const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${import.meta.env.VITE_GOOGLE_VISION_API_KEY}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              requests: [
-                {
-                  image: {
-                    content: base64Data,
-                  },
-                  features: [
-                    {
-                      type: 'SAFE_SEARCH_DETECTION',
-                      maxResults: 1,
-                    },
-                  ],
-                },
-              ],
-            }),
-          });
+      // Check with Google Vision SafeSearch API
+      try {
+        const response = await fetch('/api/moderate-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ image: base64Data }),
+        });
 
-          if (response.ok) {
-            const result = await response.json();
-            const safeSearch = result.responses[0]?.safeSearchAnnotation;
-
-            if (safeSearch) {
-              // Define acceptable thresholds
-              const acceptableLevels = ['VERY_UNLIKELY', 'UNLIKELY'];
-              const restrictedCategories = ['adult', 'violence', 'racy'];
-
-              const inappropriateCategories = Object.entries(safeSearch)
-                .filter(([category, level]) => 
-                  restrictedCategories.includes(category) && !acceptableLevels.includes(level)
-                )
-                .map(([category, level]) => ({ category, level }));
-
-              if (inappropriateCategories.length > 0) {
-                addToLog({
-                  type: 'image',
-                  content: 'Image moderation',
-                  status: 'blocked',
-                  reason: 'Inappropriate content detected',
-                  details: inappropriateCategories
-                });
-                return false;
-              }
-            }
+        if (response.ok) {
+          const result = await response.json();
+          
+          if (result.flagged) {
+            addToLog({
+              type: 'image',
+              content: 'Image moderation',
+              status: 'blocked',
+              reason: 'Inappropriate content detected',
+              severity: 'high',
+              details: result.violations || []
+            });
+            return false;
           }
-        } catch (error) {
-          console.error('Google Vision API error:', error);
-          // Continue with basic checks if API fails
         }
+      } catch (error) {
+        console.error('Google Vision API error:', error);
+        // Continue with basic checks if API fails
       }
 
       addToLog({
         type: 'image',
         content: 'Image moderation',
         status: 'approved',
-        reason: 'Passed all checks'
+        reason: 'Passed all checks',
+        severity: 'low'
       });
       return true;
     } catch (error) {
@@ -166,23 +130,69 @@ export const useModeration = () => {
         type: 'image',
         content: 'Image moderation',
         status: 'error',
-        reason: 'Moderation error'
+        reason: 'Moderation error',
+        severity: 'medium'
       });
       return false;
     }
   };
 
-  // Canvas snapshot moderation (periodic checking)
+  // Canvas snapshot moderation (Layer 3)
   const moderateCanvas = async (canvas) => {
     try {
       if (!canvas) return true;
 
       const imageData = canvas.toDataURL('image/png');
-      return await moderateImage(imageData);
+      const isAppropriate = await moderateImage(imageData);
+      
+      if (!isAppropriate) {
+        addToLog({
+          type: 'canvas',n          content: 'Canvas snapshot moderation',
+          status: 'blocked',
+          reason: 'Inappropriate canvas content detected',
+          severity: 'high',
+          action: 'canvas_blocked'
+        });
+      }
+      
+      return isAppropriate;
     } catch (error) {
       console.error('Canvas moderation error:', error);
+      addToLog({
+        type: 'canvas',
+        content: 'Canvas snapshot moderation',
+        status: 'error',
+        reason: 'Canvas moderation error',
+        severity: 'medium'
+      });
       return false;
     }
+  };
+
+  // Get moderation statistics
+  const getModerationStats = () => {
+    const stats = {
+      total: moderationLog.length,
+      approved: moderationLog.filter(entry => entry.status === 'approved').length,
+      blocked: moderationLog.filter(entry => entry.status === 'blocked').length,
+      errors: moderationLog.filter(entry => entry.status === 'error').length,
+      byType: {
+        text: moderationLog.filter(entry => entry.type === 'text').length,
+        image: moderationLog.filter(entry => entry.type === 'image').length,
+        canvas: moderationLog.filter(entry => entry.type === 'canvas').length
+      },
+      bySeverity: {
+        high: moderationLog.filter(entry => entry.severity === 'high').length,
+        medium: moderationLog.filter(entry => entry.severity === 'medium').length,
+        low: moderationLog.filter(entry => entry.severity === 'low').length
+      }
+    };
+    return stats;
+  };
+
+  // Clear moderation log
+  const clearLog = () => {
+    setModerationLog([]);
   };
 
   return {
@@ -190,6 +200,10 @@ export const useModeration = () => {
     moderateImage,
     moderateCanvas,
     moderationLog,
-    addToLog
+    addToLog,
+    getModerationStats,
+    clearLog
   };
 };
+
+export default useModeration;

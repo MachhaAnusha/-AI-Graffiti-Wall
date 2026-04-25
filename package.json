@@ -5,12 +5,24 @@
   "scripts": {
     "build": "cd client && npm run build",
     "start": "cd server && npm start",
-    "dev": "cd server && npm run dev"
+    "dev": "cd server && npm run dev",
+    "dev:all": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev\"",
+    "install:all": "cd server && npm install && cd ../client && npm install"
   },
-  "keywords": ["graffiti", "ai", "wall", "canvas", "socket.io", "react"],
+  "keywords": [
+    "graffiti",
+    "ai",
+    "wall",
+    "canvas",
+    "socket.io",
+    "react"
+  ],
   "author": "MachhaAnusha",
   "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
   "engines": {
-    "node": "18.x"
+    "node": ">=20.0.0"
   }
 }

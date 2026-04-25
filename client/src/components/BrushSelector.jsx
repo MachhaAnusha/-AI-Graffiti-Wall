@@ -1,63 +1,89 @@
 import React from 'react';
 
-const BrushSelector = ({ brushSize, onSizeChange }) => {
-  const presetSizes = [
-    { name: 'XS', size: 2 },
-    { name: 'S', size: 5 },
-    { name: 'M', size: 10 },
-    { name: 'L', size: 15 },
-    { name: 'XL', size: 20 },
-    { name: 'XXL', size: 30 },
+const BrushSelector = ({ selectedBrush, onBrushChange, disabled = false, compact = false }) => {
+  const brushes = [
+    { id: 'freehand', name: 'Freehand', icon: '✏️', description: 'Smooth drawing' },
+    { id: 'spray', name: 'Spray', icon: '💨', description: 'Aerosol effect' },
+    { id: 'marker', name: 'Marker', icon: '🖊️', description: 'Bold marker' },
+    { id: 'chalk', name: 'Chalk', icon: '🪨', description: 'Rough texture' },
+    { id: 'drip', name: 'Drip', icon: '💧', description: 'Paint drips' },
+    { id: 'eraser', name: 'Eraser', icon: '🧹', description: 'Remove marks' }
   ];
 
-  return (
-    <div className="bg-gray-900 p-4 rounded-lg border-2 border-pink-500">
-      <h3 className="text-lg font-bold mb-4 neon-pink font-boogaloo">
-        Brush Size
-      </h3>
-
-      {/* Preset Sizes */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {presetSizes.map((preset) => (
+  if (compact) {
+    return (
+      <div className="flex gap-2">
+        {brushes.map((brush) => (
           <button
-            key={preset.name}
-            onClick={() => onSizeChange(preset.size)}
-            className={`p-2 rounded text-sm font-boogaloo transition-all ${
-              brushSize === preset.size
-                ? 'bg-pink-500 text-white neon-pink'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
+            key={brush.id}
+            onClick={() => onBrushChange(brush.id)}
+            disabled={disabled}
+            className={`toolbar-item ${selectedBrush === brush.id ? 'active' : ''}`}
+            title={brush.description}
           >
-            <div>{preset.name}</div>
-            <div className="text-xs">{preset.size}px</div>
+            <span className="text-xl">{brush.icon}</span>
           </button>
         ))}
       </div>
+    );
+  }
 
-      {/* Custom Size Slider */}
-      <div>
-        <p className="text-sm font-medium mb-2">Custom Size: {brushSize}px</p>
-        <input
-          type="range"
-          min="1"
-          max="50"
-          value={brushSize}
-          onChange={(e) => onSizeChange(parseInt(e.target.value))}
-          className="w-full"
-        />
-        
-        {/* Visual Preview */}
-        <div className="mt-4 flex justify-center">
-          <div className="bg-gray-800 p-4 rounded">
-            <div
-              className="rounded-full bg-pink-500"
-              style={{
-                width: `${Math.min(brushSize, 40)}px`,
-                height: `${Math.min(brushSize, 40)}px`,
-                opacity: Math.min(brushSize / 20, 1)
-              }}
-            ></div>
+  return (
+    <div className="graffiti-panel">
+      <h3 className="graffiti-title text-lg mb-4">Brush Tools</h3>
+      
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {brushes.map((brush) => (
+          <button
+            key={brush.id}
+            onClick={() => onBrushChange(brush.id)}
+            disabled={disabled}
+            className={`
+              relative overflow-hidden rounded-lg p-4 transition-all duration-300 transform hover:scale-105
+              ${selectedBrush === brush.id 
+                ? 'bg-gradient-to-br from-accent-primary to-accent-secondary text-primary neon-glow' 
+                : 'bg-tertiary text-secondary hover:bg-secondary'
+              }
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            `}
+          >
+            <div className="flex flex-col items-center space-y-2">
+              <span className="text-2xl">{brush.icon}</span>
+              <span className="font-semibold text-sm">{brush.name}</span>
+              <span className="text-xs opacity-75">{brush.description}</span>
+            </div>
+            
+            {selectedBrush === brush.id && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 animate-pulse" />
+            )}
+          </button>
+        ))}
+      </div>
+      
+      {/* Brush Info */}
+      <div className="mt-4 p-3 bg-tertiary rounded-lg">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">
+            {brushes.find(b => b.id === selectedBrush)?.icon}
+          </span>
+          <div>
+            <div className="font-semibold text-sm">
+              {brushes.find(b => b.id === selectedBrush)?.name}
+            </div>
+            <div className="text-xs text-muted">
+              {brushes.find(b => b.id === selectedBrush)?.description}
+            </div>
           </div>
+        </div>
+        
+        {/* Brush-specific tips */}
+        <div className="mt-2 text-xs text-muted">
+          {selectedBrush === 'spray' && 'Hold longer for more spreading effect'}
+          {selectedBrush === 'drip' && 'Watch the paint drip down automatically'}
+          {selectedBrush === 'marker' && 'Semi-transparent bold strokes'}
+          {selectedBrush === 'chalk' && 'Rough textured drawing'}
+          {selectedBrush === 'eraser' && 'Remove unwanted marks'}
+          {selectedBrush === 'freehand' && 'Smooth, natural drawing'}
         </div>
       </div>
     </div>
