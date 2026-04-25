@@ -110,7 +110,24 @@ export const useCanvas = () => {
   };
 
   const addTextToCanvas = (text, style) => {
-    if (!canvas.current) return;
+    // Ensure canvas is initialized
+    if (!canvas.current) {
+      // Try to initialize canvas if not already done
+      const canvasElement = document.getElementById('graffiti-canvas');
+      if (canvasElement) {
+        canvas.current = new fabric.Canvas('graffiti-canvas', {
+          width: 800,
+          height: 450,
+          backgroundColor: '#000000',
+          isDrawingMode: true,
+        });
+        canvas.current.freeDrawingBrush.width = 5;
+        canvas.current.freeDrawingBrush.color = '#ff006e';
+      } else {
+        console.error('Canvas element not found');
+        return;
+      }
+    }
 
     const styles = {
       bubble: {
@@ -166,6 +183,8 @@ export const useCanvas = () => {
     canvas.current.add(fabricText);
     canvas.current.setActiveObject(fabricText);
     canvas.current.renderAll();
+    
+    console.log('Text added to canvas:', text);
   };
 
   return {

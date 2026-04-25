@@ -101,9 +101,13 @@ const CreatorView = () => {
     link.download = `graffiti-${Date.now()}.png`;
     link.href = dataURL;
     link.click();
+    alert('Downloaded image!');
   };
 
   const handleSendToDisplay = async () => {
+    alert('Send to Display button clicked!');
+    console.log('Send to Display button clicked!');
+    
     try {
       const imageData = getCanvasData();
       
@@ -112,21 +116,53 @@ const CreatorView = () => {
         return;
       }
 
+      alert('Canvas data found! Length: ' + (imageData ? imageData.length : 'null'));
+      alert('Starting server request...');
+
+      console.log('Sending artwork to server...');
+      console.log('Original image data length:', imageData ? imageData.length : 'null');
+
+      // Optimize image data to reduce payload size
+      let optimizedImageData = imageData;
+      if (imageData && imageData.length > 1000000) { // If larger than 1MB
+        // Reduce quality by scaling down the canvas temporarily
+        const canvas = document.getElementById('graffiti-canvas');
+        if (canvas) {
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          const scaleFactor = 0.7; // Scale down to 70%
+          
+          tempCanvas.width = canvas.width * scaleFactor;
+          tempCanvas.height = canvas.height * scaleFactor;
+          tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+          
+          optimizedImageData = tempCanvas.toDataURL('image/jpeg', 0.7); // Use JPEG with 70% quality
+          console.log('Optimized image data length:', optimizedImageData.length);
+        }
+      }
+
+      console.log('Final image data length:', optimizedImageData.length);
+      console.log('Server URL:', 'http://10.5.9.139:3000/api/gallery');
+
       // Submit to server
-      const response = await fetch('http://localhost:3000/api/gallery', {
+      const response = await fetch('http://10.5.9.139:3000/api/gallery', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          image: imageData,
+          image: optimizedImageData,
           nickname: nickname || 'Anonymous',
           timestamp: new Date().toISOString(),
         }),
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       if (response.ok) {
         const result = await response.json();
+        console.log('Server response:', result);
         alert('Artwork sent to display successfully!');
         
         // Clear canvas after successful submission
@@ -134,11 +170,16 @@ const CreatorView = () => {
           clearCanvas();
         }, 1000);
       } else {
-        alert('Failed to send artwork to display');
+        const errorText = await response.text();
+        console.error('Server error response:', errorText);
+        alert(`Failed to send artwork to display: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
-      console.error('Error sending artwork:', error);
-      alert('Error sending artwork to display');
+      console.error('Network error sending artwork:', error);
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      alert(`Error sending artwork to display: ${error.message}`);
     }
   };
 
@@ -193,42 +234,51 @@ const CreatorView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-4">
+    <div className="min-h-screen p-6 transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="text-center mb-6">
-          <h1 className="text-4xl font-bold neon-pink font-boogaloo mb-2">
+        {/* Premium Header */}
+        <header className="text-center mb-12 slide-in-up">
+          <h1 className="premium-header font-boogaloo mb-4">
             AI Graffiti Wall
           </h1>
-          <p className="text-gray-400">
-            Welcome, <span className="neon-blue">{nickname}</span>! Create your masterpiece
+          <p className="text-xl font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Welcome, <span className="neon-blue font-semibold">{nickname}</span>! Create your masterpiece
           </p>
         </header>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Premium Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Left Sidebar - Tools */}
-          <div className="lg:col-span-1 space-y-4">
-            <Toolbar
-              selectedBrush={selectedBrush}
-              onBrushChange={handleBrushChange}
-              onClearCanvas={handleClearCanvas}
-              onDownload={handleDownload}
-              onSendToDisplay={handleSendToDisplay}
-              isDrawing={isDrawing}
-            />
+          <div className="lg:col-span-1 space-y-6">
+            <div className="premium-card fade-in">
+              <h3 className="text-lg font-semibold mb-6 font-boogaloo text-gradient">Drawing Tools</h3>
+              <Toolbar
+                selectedBrush={selectedBrush}
+                onBrushChange={handleBrushChange}
+                onClearCanvas={handleClearCanvas}
+                onDownload={handleDownload}
+                onSendToDisplay={handleSendToDisplay}
+                isDrawing={isDrawing}
+              />
+            </div>
             
-            <BrushSelector
-              brushSize={brushSize}
-              onSizeChange={handleSizeChange}
-            />
+            <div className="premium-card fade-in" style={{ animationDelay: '0.15s' }}>
+              <h3 className="text-lg font-semibold mb-6 font-boogaloo text-gradient">Brush Settings</h3>
+              <BrushSelector
+                brushSize={brushSize}
+                onSizeChange={handleSizeChange}
+              />
+            </div>
             
-            <TimerWidget onComplete={handleTimerComplete} />
+            <div className="premium-card fade-in" style={{ animationDelay: '0.3s' }}>
+              <h3 className="text-lg font-semibold mb-6 font-boogaloo text-gradient">Session Timer</h3>
+              <TimerWidget onComplete={handleTimerComplete} />
+            </div>
           </div>
 
           {/* Center - Canvas */}
           <div className="lg:col-span-2">
-            <div className="canvas-container spray-texture">
+            <div className="premium-canvas fade-in" style={{ animationDelay: '0.45s' }}>
               <canvas
                 id="graffiti-canvas"
                 className="w-full"
@@ -236,42 +286,55 @@ const CreatorView = () => {
               />
             </div>
             
-            {/* Background Options */}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {['brick', 'concrete', 'metal', 'wood', 'black', 'white'].map((bg) => (
-                <button
-                  key={bg}
-                  onClick={() => handleBackgroundChange(bg)}
-                  className={`px-3 py-1 rounded text-sm font-boogaloo ${
-                    background === bg
-                      ? 'bg-pink-500 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  {bg.charAt(0).toUpperCase() + bg.slice(1)}
-                </button>
-              ))}
+            {/* Premium Background Options */}
+            <div className="mt-8 p-6 premium-card fade-in" style={{ animationDelay: '0.6s' }}>
+              <h3 className="text-xl font-semibold mb-6 font-boogaloo text-gradient">Canvas Background</h3>
+              <div className="grid grid-cols-3 gap-3">
+                {['brick', 'concrete', 'metal', 'wood', 'black', 'white'].map((bg) => (
+                  <button
+                    key={bg}
+                    onClick={() => handleBackgroundChange(bg)}
+                    className={`premium-button text-sm font-boogaloo transition-all duration-300 transform hover:scale-105 ${
+                      background === bg
+                        ? 'shadow-lg'
+                        : ''
+                    }`}
+                  >
+                    {bg.charAt(0).toUpperCase() + bg.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Right Sidebar - Colors & Text */}
-          <div className="lg:col-span-1 space-y-4">
-            <ColorPicker
-              selectedColor={selectedColor}
-              onColorChange={handleColorChange}
-              opacity={opacity}
-              onOpacityChange={setOpacity}
-              neonGlow={neonGlow}
-              onNeonGlowChange={setNeonGlow}
-            />
+          <div className="lg:col-span-1 space-y-6">
+            <div className="premium-card fade-in" style={{ animationDelay: '0.75s' }}>
+              <h3 className="text-lg font-semibold mb-6 font-boogaloo text-gradient">Color Palette</h3>
+              <ColorPicker
+                selectedColor={selectedColor}
+                onColorChange={handleColorChange}
+                opacity={opacity}
+                onOpacityChange={setOpacity}
+                neonGlow={neonGlow}
+                onNeonGlowChange={setNeonGlow}
+              />
+            </div>
             
-            <TextToGraffiti onTextSubmit={handleTextSubmit} />
+            <div className="premium-card fade-in" style={{ animationDelay: '0.9s' }}>
+              <h3 className="text-lg font-semibold mb-6 font-boogaloo text-gradient">Text to Graffiti</h3>
+              <TextToGraffiti onTextSubmit={handleTextSubmit} />
+            </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <footer className="text-center mt-8 text-gray-400 text-sm">
-          <p>Create your graffiti and send it to the big screen!</p>
+        {/* Premium Footer */}
+        <footer className="text-center mt-16 text-base fade-in" style={{ color: 'var(--text-secondary)', animationDelay: '1.05s' }}>
+          <div className="premium-glass inline-block px-8 py-4 rounded-2xl">
+            <p className="font-medium">
+              Create your graffiti and send it to the big screen! 
+            </p>
+          </div>
         </footer>
       </div>
     </div>

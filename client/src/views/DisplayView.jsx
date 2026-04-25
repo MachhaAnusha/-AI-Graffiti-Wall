@@ -51,7 +51,8 @@ const DisplayView = () => {
     // Generate QR code
     const generateQR = async () => {
       try {
-        const url = window.location.origin + '/create';
+        // Use the correct IP address instead of localhost
+        const url = 'http://10.5.9.139:3000/create';
         const qr = await QRCode.toDataURL(url, {
           width: 200,
           margin: 2,

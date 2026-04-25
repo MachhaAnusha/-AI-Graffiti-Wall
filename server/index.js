@@ -17,13 +17,10 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Basic API routes for testing
-app.get('/', (req, res) => {
-  res.json({ message: 'AI Graffiti Wall Server is running!' });
-});
-
 app.get('/api/status', (req, res) => {
   res.json({ 
     status: 'running', 
@@ -178,9 +175,11 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+const HOST = '0.0.0.0'; // Bind to all interfaces
+server.listen(PORT, HOST, () => {
   console.log(`AI Graffiti Wall server running on port ${PORT}`);
   console.log(`Application: http://localhost:${PORT}`);
+  console.log(`External Access: http://10.5.9.139:${PORT}`);
   console.log(`API Status: http://localhost:${PORT}/api/status`);
   console.log(`Gallery API: http://localhost:${PORT}/api/gallery`);
 });
